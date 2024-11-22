@@ -14,8 +14,8 @@ class MinimaxAgent(Agent):
   add any helper functionalities needed for your agent.
   """
 
-  def __init__(self):
-    super(MinimaxAgent, self).__init__()
+  def _init_(self):
+    super(MinimaxAgent, self)._init_()
     self.name = "StudentAgent"
 
   def evaluate_game_board(self, board, colour, opponent_colour, player_score, opponent_score):
@@ -33,33 +33,48 @@ class MinimaxAgent(Agent):
     corner_penalty = sum(1 for corner in corners if board[corner] == 3 - colour)
     return 25*(corner_score - corner_penalty) + mobility + (player_score - opponent_score)
   
-  def MiniMaxValue(self, board_state, turn, player, opponent):
-    # turn = 0 means that it's min player turn
-    # turn = 1 means that it's max player turn
-    game_over, p_score, o_score = check_endgame(board_state, player, opponent)
-    if game_over:
-      return self.evaluate_game_board(board_state, player, opponent, p_score, o_score)
-      # evaluate the board if the game is deemed over
-
-    moves = get_valid_moves(board_state, turn)
-    utilities = [None]*len(moves)
-    for j, move in enumerate(moves):
-      copy = deepcopy(board_state)
-      execute_move(copy, move, turn)
-      utilities[j] = self.MiniMaxValue(copy, turn^1, player, opponent)
-    return max(utilities) if turn else min(utilities)
-  
-  def MiniMaxDecision(self, board, player):
-    moves = get_valid_moves(board, player)
+  def MiniMaxDecision(self, board_state, player, opponent):
+    moves = get_valid_moves(board_state, player)
     if not moves:
       return None
-    vals = [None]*len(moves)
-    for i, move in enumerate(moves):
-      copy = deepcopy(board)
-      execute_move(copy, move, player)
-      vals[i] = (move, self.MiniMaxValue(copy, 0, player, 3-player))
-    vals.sort(key=lambda game: game[1], reverse=False)
-    return vals[0][0]
+    highest_value = float('-inf')
+    best_move = None
+    for move in moves:
+      new_state = deepcopy(board_state)
+      execute_move(board_state, move, player)
+      value = self.MiniMaxValue(new_state, player, 3 - player, 3 - player)
+      if value > highest_value:
+        best_move = move
+        highest_value = value
+    return best_move
+
+  def MiniMaxValue(self, state, player, opponent, to_move):
+    game_over, p_score, o_score = check_endgame(state, to_move, 3 - to_move)
+    if game_over:
+      return self.evaluate_game_board(state, player, opponent, p_score, o_score)
+    
+    if to_move == player:
+      # max turn
+      max_val = float('-inf')
+      moves = get_valid_moves(state, player)
+      for move in moves:
+        new_state = deepcopy(state)
+        execute_move(new_state, move, player)
+        value = self.MiniMaxValue(new_state, player, opponent, 3 - to_move)
+        if value > max_val:
+          max_val = value
+      return max_val
+    else:
+      # min turn
+      min_val = float('inf')
+      moves = get_valid_moves(state, opponent)
+      for move in moves:
+        new_state = deepcopy(state)
+        execute_move(new_state, move, opponent)
+        value = self.MiniMaxValue(new_state, player, opponent, 3 - to_move)
+        if value < min_val:
+          min_val = value
+      return min_val
 
   def step(self, chess_board, player, opponent):
     """
@@ -82,12 +97,12 @@ class MinimaxAgent(Agent):
     # time_taken during your search and breaking with the best answer
     # so far when it nears 2 seconds.
     start_time = time.time()
-    best_move = self.MiniMaxDecision(chess_board, player)
+    best = self.MiniMaxDecision(chess_board, player, opponent)
     time_taken = time.time() - start_time
 
     print("My AI's turn took ", time_taken, "seconds.")
 
     # Dummy return (you should replace this with your actual logic)
     # Returning a random valid move as an example
-    return best_move
     
+    return best
