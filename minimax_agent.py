@@ -14,8 +14,8 @@ class MinimaxAgent(Agent):
   add any helper functionalities needed for your agent.
   """
 
-  def _init_(self):
-    super(MinimaxAgent, self)._init_()
+  def __init__(self):
+    super(MinimaxAgent, self).__init__()
     self.name = "StudentAgent"
 
   def evaluate_game_board(self, board, colour, opponent_colour, player_score, opponent_score):
@@ -41,39 +41,57 @@ class MinimaxAgent(Agent):
     best_move = None
     for move in moves:
       new_state = deepcopy(board_state)
-      execute_move(board_state, move, player)
-      value = self.MiniMaxValue(new_state, player, 3 - player, 3 - player)
+      execute_move(new_state, move, player)
+      value = self.MiniMaxValue(new_state, player, opponent, opponent)
       if value > highest_value:
         best_move = move
         highest_value = value
     return best_move
 
   def MiniMaxValue(self, state, player, opponent, to_move):
-    game_over, p_score, o_score = check_endgame(state, to_move, 3 - to_move)
+    game_over = None
+    p_score = None
+    o_score = None
+    check = None
+    if to_move == player:
+      # our turn to move
+      check = check_endgame(state, player, opponent)
+    elif to_move == opponent:
+      # opponent's turn to move
+      check = check_endgame(state, opponent, player)
+    game_over = check[0]
+
+    if player == 1:
+        p_score = check[1]
+        o_score = check[2]
+    elif player == 2:
+        p_score = check[2]
+        o_score = check[1]
     if game_over:
+      # terminal state
       return self.evaluate_game_board(state, player, opponent, p_score, o_score)
     
+    moves = get_valid_moves(state, to_move)
+    if not moves:
+      return self.MiniMaxValue(state, player, opponent, 3 - to_move)
+
     if to_move == player:
-      # max turn
       max_val = float('-inf')
-      moves = get_valid_moves(state, player)
       for move in moves:
-        new_state = deepcopy(state)
-        execute_move(new_state, move, player)
-        value = self.MiniMaxValue(new_state, player, opponent, 3 - to_move)
-        if value > max_val:
-          max_val = value
+        new_board = deepcopy(state)
+        execute_move(new_board, move, to_move)
+        val = self.MiniMaxValue(new_board, player, opponent, 3 - to_move)
+        if val > max_val:
+          max_val = val
       return max_val
     else:
-      # min turn
       min_val = float('inf')
-      moves = get_valid_moves(state, opponent)
       for move in moves:
-        new_state = deepcopy(state)
-        execute_move(new_state, move, opponent)
-        value = self.MiniMaxValue(new_state, player, opponent, 3 - to_move)
-        if value < min_val:
-          min_val = value
+        new_board = deepcopy(state)
+        execute_move(new_board, move, to_move)
+        val = self.MiniMaxValue(new_board, player, opponent, 3 - to_move)
+        if val < min_val:
+          min_val = val
       return min_val
 
   def step(self, chess_board, player, opponent):
