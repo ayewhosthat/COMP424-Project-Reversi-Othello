@@ -9,15 +9,15 @@ from helpers import random_move, count_capture, execute_move, check_endgame, get
 
 
 
-@register_agent("student_agent")
-class StudentAgent(Agent):
+@register_agent("late_break_agent")
+class LateBreakAgent(Agent):
   """
   A class for your implementation. Feel free to use this class to
   add any helper functionalities needed for your agent.
   """
 
   def __init__(self):
-    super(StudentAgent, self).__init__()
+    super(LateBreakAgent, self).__init__()
     self.name = "StudentAgent"  
 
 
@@ -43,7 +43,7 @@ class StudentAgent(Agent):
     # so far when it nears 2 seconds.
     start_time = time.time()
     time_taken = time.time() - start_time 
-    time_limit = 1.0 #much lower than 2.0 as moves at a certain depth get quite slow
+    time_limit = 2.00 #much lower than 2.0 as moves at a certain depth get quite slow
     best_move = None
     depth = 1
     board_size = chess_board.shape[0]
@@ -57,11 +57,12 @@ class StudentAgent(Agent):
         for move in sorted_moves:
             new_board = deepcopy(chess_board)
             execute_move(new_board, move, player)
-            move_score = self.minimax(new_board, depth, float("-inf"), float("inf"), False, player, opponent, value_matrix)
+            elapsed_time = time.time() - start_time
+            move_score = self.minimax(new_board, depth, float("-inf"), float("inf"), False, player, opponent, value_matrix, elapsed_time, time_limit)
             if best_move is None or move_score > best_move[1]:
                 best_move = (move, move_score)
-            if time.time() - start_time >= 1.5: #if we estimate we don't have time to check another move, break out
-                break
+            # if time.time() - start_time >= 1.5: #if we estimate we don't have time to check another move, break out
+            #     break
 
         depth += 1
         time_taken = time.time() - start_time
@@ -73,7 +74,8 @@ class StudentAgent(Agent):
     else:
         return random_move(chess_board, player)
 
-  def minimax(self, board, depth, alpha, beta, maximizing_player, player, opponent, value_matrix):
+  def minimax(self, board, depth, alpha, beta, maximizing_player, player, opponent, value_matrix, elapsed_time : float, time_limit : float):
+    start_time = time.time()
     if player == 1:
         is_endgame, player_score, opponent_score = check_endgame(board, player, opponent)
     else:
@@ -82,6 +84,8 @@ class StudentAgent(Agent):
         return player_score - opponent_score
     if depth == 0:
         return self.heuristic(board, player, opponent, len(value_matrix[0]))
+    # if elapsed_time >= time_limit:
+    #    return None
 
     valid_moves = get_valid_moves(board, player if maximizing_player else opponent)
     sorted_moves = self.sort_moves(valid_moves, value_matrix)
@@ -89,9 +93,12 @@ class StudentAgent(Agent):
     if maximizing_player:
         max_eval = float("-inf")
         for move in sorted_moves:
+            current_time = time.time() - start_time
+            if current_time + elapsed_time >= time_limit:
+               break
             new_board = deepcopy(board)
             execute_move(new_board, move, player)
-            eval = self.minimax(new_board, depth - 1, alpha, beta, False, player, opponent, value_matrix)
+            eval = self.minimax(new_board, depth - 1, alpha, beta, False, player, opponent, value_matrix, current_time + elapsed_time, time_limit)
             max_eval = max(max_eval, eval)
             alpha = max(alpha, eval)
             if beta <= alpha:
@@ -100,9 +107,12 @@ class StudentAgent(Agent):
     else:
         min_eval = float("inf")
         for move in sorted_moves:
+            current_time = time.time() - start_time
+            if current_time + elapsed_time >= time_limit:
+                break
             new_board = deepcopy(board)
             execute_move(new_board, move, opponent)
-            eval = self.minimax(new_board, depth - 1, alpha, beta, True, player, opponent, value_matrix)
+            eval = self.minimax(new_board, depth - 1, alpha, beta, True, player, opponent, value_matrix, current_time + elapsed_time, time_limit)
             min_eval = min(min_eval, eval)
             beta = min(beta, eval)
             if beta <= alpha:
@@ -153,6 +163,9 @@ class StudentAgent(Agent):
                   frontier_count += 1
     potential_mobility = frontier_count
 
+    # opponent mobility
+    opp_mobility = -len(get_valid_moves(board, opponent))
+
     #if game_stage == "early":
     #  return some weighting of factors: higher value to corners
     #elif game_stage == "mid":
@@ -160,7 +173,7 @@ class StudentAgent(Agent):
     #else:
     #  higher value to parity and stability
     
-    return parity + 100 * map_score + 5*potential_mobility + corner_score + corner_penalty
+    return parity + 100 * map_score + 5*potential_mobility + corner_score + corner_penalty + opp_mobility
 
 
   def get_game_stage(self, board, player, opponent, board_size):
