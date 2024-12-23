@@ -9,15 +9,15 @@ from helpers import random_move, count_capture, execute_move, check_endgame, get
 
 
 
-@register_agent("late_break_agent")
-class LateBreakAgent(Agent):
+@register_agent("student_agent")
+class StudentAgent(Agent):
   """
   A class for your implementation. Feel free to use this class to
   add any helper functionalities needed for your agent.
   """
 
   def __init__(self):
-    super(LateBreakAgent, self).__init__()
+    super(StudentAgent, self).__init__()
     self.name = "StudentAgent"  
 
 
@@ -48,25 +48,28 @@ class LateBreakAgent(Agent):
     depth = 1
     board_size = chess_board.shape[0]
     value_matrix = self.get_value_map(chess_board, board_size)
-    
+    breadth = 0
+    # tracking breadth
     
     while time_taken < time_limit:
+        breadth = 0
         valid_moves = get_valid_moves(chess_board, player)
         sorted_moves = self.sort_moves(valid_moves, value_matrix)
-        
         for move in sorted_moves:
+            breadth += 1
             new_board = deepcopy(chess_board)
             execute_move(new_board, move, player)
             elapsed_time = time.time() - start_time
             move_score = self.minimax(new_board, depth, float("-inf"), float("inf"), False, player, opponent, value_matrix, elapsed_time, time_limit)
             if best_move is None or move_score > best_move[1]:
                 best_move = (move, move_score)
-            # if time.time() - start_time >= 1.5: #if we estimate we don't have time to check another move, break out
-            #     break
+            if time.time() - start_time >= 1.9: #if we estimate we don't have time to check another move, break out
+                break
 
         depth += 1
         time_taken = time.time() - start_time
 
+    print(f'Breadth achieved: {breadth} moves out of {len(valid_moves)}')
     print("My AI's turn took ", time_taken, "seconds.")
 
     if best_move:
@@ -74,7 +77,7 @@ class LateBreakAgent(Agent):
     else:
         return random_move(chess_board, player)
 
-  def minimax(self, board, depth, alpha, beta, maximizing_player, player, opponent, value_matrix, elapsed_time : float, time_limit : float):
+  def minimax(self, board, depth, alpha, beta, maximizing_player, player, opponent, value_matrix, elapsed_time : float, time_limit : float, pruned):
     start_time = time.time()
     if player == 1:
         is_endgame, player_score, opponent_score = check_endgame(board, player, opponent)
@@ -102,7 +105,9 @@ class LateBreakAgent(Agent):
             max_eval = max(max_eval, eval)
             alpha = max(alpha, eval)
             if beta <= alpha:
+                pruned += 1
                 break  #beta cutoff
+        # print(f'Moves pruned: {pruned}')
         return max_eval
     else:
         min_eval = float("inf")
@@ -116,7 +121,9 @@ class LateBreakAgent(Agent):
             min_eval = min(min_eval, eval)
             beta = min(beta, eval)
             if beta <= alpha:
+                pruned += 1
                 break  #alpha cutoff
+        # print(f'Moves pruned: {pruned}')
         return min_eval
 
   def heuristic(self, board, player, opponent, board_size):
@@ -125,7 +132,7 @@ class LateBreakAgent(Agent):
     #map control based off value map
     value_map = self.get_value_map(board, board_size)
 
-    player_weighted_score = 0 #calculate the weighted score for the player and opponent
+    player_weighted_score = 0 #claculate the weighted score for the player and opponent
     opponent_weighted_score = 0
 
     for i in range(board_size):
@@ -137,11 +144,15 @@ class LateBreakAgent(Agent):
     
     map_score = (player_weighted_score - opponent_weighted_score) / (player_weighted_score + opponent_weighted_score +1) #normalized
 
+    #edge stability
+    
+    stab_score = self.eval_edge_stability(board, player, opponent)*150
+
     #corner control: only if corners are taken. Take from gpt_greedy_corners_agent
     corners = [(0, 0), (0, board.shape[1] - 1), (board.shape[0] - 1, 0), (board.shape[0] - 1, board.shape[1] - 1)]
-    corner_score = sum(1 for corner in corners if board[corner] == player) * 25
-    corner_penalty = sum(1 for corner in corners if board[corner] == opponent) * -25
-
+    corner_score = (sum(1 for corner in corners if board[corner] == player) * 10) 
+    corner_penalty = (sum(1 for corner in corners if board[corner] == opponent) * -10) 
+    
     #piece parity
     if player == 1:
         is_endgame, player_score, opponent_score = check_endgame(board, player, opponent)
@@ -149,31 +160,17 @@ class LateBreakAgent(Agent):
         is_endgame, opponent_score, player_score = check_endgame(board, opponent, player)
     parity = (player_score - opponent_score) / (player_score + opponent_score +1)
     
-    #mobility
-    # heuristic 3: potential mobility
-    # we can give an estimate for potential mobility by counting empty squares next to opposing pieces
-    frontier_count = 0
-    directions = get_directions()
-    for i, j in np.ndindex(board.shape):
-      if board[i, j] == opponent:
-          for dx, dy in directions:
-              ni, nj = i + dx, j + dy  
-              # check for out of bounds and empty
-              if 0 <= ni < board_size and 0 <= nj < board_size and board[ni, nj] == 0:
-                  frontier_count += 1
-    potential_mobility = frontier_count
+    #mobility. Take from gpt_greedy_corners_agent
+    opponent_moves = len(get_valid_moves(board, opponent))
+    my_moves = len(get_valid_moves(board,player))
+    mobility_score = (my_moves-opponent_moves) / (opponent_moves+my_moves +1)
 
-    # opponent mobility
-    opp_mobility = -len(get_valid_moves(board, opponent))
-
-    #if game_stage == "early":
-    #  return some weighting of factors: higher value to corners
-    #elif game_stage == "mid":
-    #  return some weighting of factors: higher value to stability and mobility
-    #else:
-    #  higher value to parity and stability
-    
-    return parity + 100 * map_score + 5*potential_mobility + corner_score + corner_penalty + opp_mobility
+    if game_stage == "early":
+        return 40 * parity + 200 * map_score + 500 * ((corner_score+corner_penalty)/41) + 400*stab_score + 100*mobility_score
+    elif game_stage == "mid":
+        return 50 * parity + 150 * map_score + 500 * ((corner_score+corner_penalty)/41) + 400*stab_score + 80*mobility_score
+    else:
+        return 60 * parity + 80 * map_score + 500 * ((corner_score+corner_penalty)/41) + 400*stab_score + 50*mobility_score
 
 
   def get_game_stage(self, board, player, opponent, board_size):
@@ -199,6 +196,63 @@ class LateBreakAgent(Agent):
         reverse=True
         )
     return sorted_moves
+
+  def eval_edge_stability(self, board, player, opponent):
+
+    corners = [(0, 0), (0, board.shape[1] - 1), (board.shape[0] - 1, 0), (board.shape[0] - 1, board.shape[1] - 1)]
+    stable_pl = []
+    stable_op = []
+
+    for corner in corners:
+        directions = []
+
+        if board[corner[0], corner[1]] == player:
+            stable_pl.append(corner)
+            if corner[0] == 0:  # Top edge
+                directions.append((1, 0))
+            elif corner[0] == board.shape[0] - 1:  # Bottom edge
+                directions.append((-1, 0))
+            if corner[1] == 0:  # Left edge
+                directions.append((0, 1))
+            elif corner[1] == board.shape[1] - 1:  # Right edge
+                directions.append((0, -1))
+
+            # Use a queue for stable player discs
+            queue = list(stable_pl)
+            while queue:
+                horse = queue.pop(0)
+                for dir in directions:
+                    new_row = horse[0] + dir[0]
+                    new_col = horse[1] + dir[1]
+                    if 0 <= new_row < board.shape[0] and 0 <= new_col < board.shape[1]:
+                        if (board[new_row, new_col] == player) and (new_row, new_col) not in stable_pl:
+                            stable_pl.append((new_row, new_col))
+                            queue.append((new_row, new_col))
+
+        elif board[corner[0], corner[1]] == opponent:
+            stable_op.append(corner)
+            if corner[0] == 0:  # Top edge
+                directions.append((1, 0))
+            elif corner[0] == board.shape[0] - 1:  # Bottom edge
+                directions.append((-1, 0))
+            if corner[1] == 0:  # Left edge
+                directions.append((0, 1))
+            elif corner[1] == board.shape[1] - 1:  # Right edge
+                directions.append((0, -1))
+
+            # Use a queue for stable opponent discs
+            queue = list(stable_op)
+            while queue:
+                horse = queue.pop(0)
+                for dir in directions:
+                    new_row = horse[0] + dir[0]
+                    new_col = horse[1] + dir[1]
+                    if 0 <= new_row < board.shape[0] and 0 <= new_col < board.shape[1]:
+                        if (board[new_row, new_col] == opponent) and (new_row, new_col) not in stable_op:
+                            stable_op.append((new_row, new_col))
+                            queue.append((new_row, new_col))
+
+    return len(stable_pl) - len(stable_op)
 
   def get_value_map(self, board, board_size):
     maps = { #weighted maps depending on board size, values computed wrt capturing a corner.
